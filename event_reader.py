@@ -1,6 +1,5 @@
 import pyudev
 import evdev
-import subprocess
 
 
 def find_touchscreen_udev():
@@ -17,7 +16,6 @@ def find_touchscreen_udev():
     return None
 
 
-# Try to detect the touchscreen using udev properties
 dev = find_touchscreen_udev()
 
 if dev:
