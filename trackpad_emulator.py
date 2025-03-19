@@ -6,6 +6,53 @@ import argparse
 import sys
 
 
+class VirtualTrackpad:
+    def __init__(self) -> None:
+        pass
+
+    def move_cursor(self):
+        print("moving cursor")
+        pass
+
+    def scroll(self):
+        print("scrolling")
+        pass
+
+    def click(self, button, state):
+        print(f"click {button} {state}")
+        pass
+
+
+class TouchscreenHandler:
+    def __init__(self) -> None:
+        pass
+
+    def toggle_touch_screen(self, enabled):
+        pass
+
+    def read_event(self):
+        return []
+
+
+class GestureRecognizer:
+    def __init__(self) -> None:
+        pass
+
+    def recognize(self, event):
+        return ""
+
+
+def main():
+    touschreen_handler = TouchscreenHandler()
+    virtual_trackpad = VirtualTrackpad()
+    gesture_recognizer = GestureRecognizer()
+
+    touschreen_handler.toggle_touch_screen(enabled=False)
+    for event in touschreen_handler.read_event():
+        if gesture_recognizer.recognize(event) == "move_cursor":
+            virtual_trackpad.move_cursor()
+
+
 def find_touchscreen_udev():
     context = pyudev.Context()
     for device in context.list_devices(subsystem="input"):
@@ -146,17 +193,14 @@ try:
     touch_dev = find_touchscreen_udev()
 
     # variable initialization
-    three_finger_down = False
     touch_dev_name = str(touch_dev.name).replace(" ", "-").lower()
     max_x, max_y = get_device_xy_limit(touch_dev)
-    last_rx = last_ry = 0
     touch_start_time = None
-    active_touches = {}  # Key: slot, Value: dict with tracking_id, start_time, x, y
-    current_slot = 0  # to track the current slot being updated
-    scroll_mode = False
-    scroll_initial_avg_x = None
-    scroll_initial_avg_y = None
+    active_touches = {}
+    current_slot = 0
     already_scrolled = False
+    already_moved = False
+    three_finger_down = False
 
     capture_report(touch_dev_name, max_x, max_y, ORIENTATION)
     toggle_original_input(touch_dev_name, False)
@@ -164,121 +208,115 @@ try:
     for event in touch_dev.read_loop():
         if event.type == ecodes.EV_ABS:
             if event.code == ecodes.ABS_MT_SLOT:
-                current_slot = (
-                    event.value
-                )  # update the current slot for subsequent MT events
+                current_slot = event.value
 
             elif event.code == ecodes.ABS_MT_TRACKING_ID:
-                if event.value == -1:
-                    # Finger lifted: mark it in active_touches
-                    if current_slot in active_touches:
-                        active_touches[current_slot]["lifted"] = True
-                else:
+                if event.value != -1:
                     active_touches[current_slot] = {
-                        "tracking_id": event.value,
-                        "start_time": event.timestamp(),
                         "initial_x": None,
                         "initial_y": None,
-                        "x": None,
-                        "y": None,
-                        "lifted": False,
+                        "current_x": None,
+                        "current_y": None,
+                        "last_x": None,
+                        "last_y": None,
                     }
 
             elif event.code == ecodes.ABS_MT_POSITION_X:
                 if current_slot in active_touches:
-                    # Save initial position once
                     if active_touches[current_slot]["initial_x"] is None:
                         active_touches[current_slot]["initial_x"] = event.value
-                    active_touches[current_slot]["x"] = event.value
+                    active_touches[current_slot]["current_x"] = event.value
 
             elif event.code == ecodes.ABS_MT_POSITION_Y:
                 if current_slot in active_touches:
                     if active_touches[current_slot]["initial_y"] is None:
                         active_touches[current_slot]["initial_y"] = event.value
-                    active_touches[current_slot]["y"] = event.value
+                    active_touches[current_slot]["current_y"] = event.value
 
         elif event.type == ecodes.EV_SYN and event.code == ecodes.SYN_REPORT:
-            if all_not_none(active_touches):
-                if len(active_touches) == 1:
-                    finger_move = all(
-                        abs(t["x"] - t["initial_x"]) > TAP_MOVEMENT_THRESHOLD
-                        or abs(t["y"] - t["initial_y"]) > TAP_MOVEMENT_THRESHOLD
+            if len(active_touches) != 0:
+                print(active_touches)
+                avg_x = sum(t["current_x"] for t in active_touches.values()) / len(
+                    active_touches
+                )
+                avg_y = sum(t["current_y"] for t in active_touches.values()) / len(
+                    active_touches
+                )
+                rx, ry = apply_rotation(
+                    avg_x,
+                    avg_y,
+                    ORIENTATION,
+                    max_x,
+                    max_y,
+                )
+                if not already_moved:
+                    if all(
+                        abs(t["current_x"] - t["initial_x"]) > TAP_MOVEMENT_THRESHOLD
+                        or abs(t["current_y"] - t["initial_y"]) > TAP_MOVEMENT_THRESHOLD
                         for t in active_touches.values()
-                    )
-                    if finger_move:
-                        rx, ry = apply_rotation(
-                            active_touches[current_slot]["x"],
-                            active_touches[current_slot]["y"],
-                            ORIENTATION,
-                            max_x,
-                            max_y,
+                    ):
+                        already_moved = True
+                elif (
+                    active_touches[current_slot]["last_x"] is not None
+                    and active_touches[current_slot]["last_y"] is not None
+                ):
+                    if len(active_touches) == 1:
+                        rel_x = int(
+                            (rx - active_touches[current_slot]["last_x"])
+                            * CURSOR_SENSITIVITY
                         )
-                        if last_rx is not None and last_ry is not None:
-                            rel_x = int((rx - last_rx) * CURSOR_SENSITIVITY)
-                            rel_y = int((ry - last_ry) * CURSOR_SENSITIVITY)
-                            device.emit(uinput.REL_X, rel_x)
-                            device.emit(uinput.REL_Y, rel_y)
-                        last_rx, last_ry = rx, ry
-                elif len(active_touches) == 2 and not already_scrolled:
-                    avg_x = sum(t["x"] for t in active_touches.values()) / 2
-                    avg_y = sum(t["y"] for t in active_touches.values()) / 2
-                    finger_move = all(
-                        abs(t["x"] - t["initial_x"]) > SCROLL_MOVEMENT_THRESHOLD
-                        or abs(t["y"] - t["initial_y"]) > SCROLL_MOVEMENT_THRESHOLD
-                        for t in active_touches.values()
-                    )
-                    if finger_move:
-                        rx, ry = apply_rotation(
-                            avg_x,
-                            avg_y,
-                            ORIENTATION,
-                            max_x,
-                            max_y,
+                        rel_y = int(
+                            (ry - active_touches[current_slot]["last_y"])
+                            * CURSOR_SENSITIVITY
                         )
-                        if last_rx is not None and last_ry is not None:
-                            rel_x = qualify(rx - last_rx) * SCROLL_SENSITIVITY
-                            rel_y = qualify(ry - last_ry) * SCROLL_SENSITIVITY
-                            device.emit(uinput.REL_HWHEEL, rel_x)
-                            device.emit(uinput.REL_WHEEL, rel_y)
-                            already_scrolled = True
-                        last_rx, last_ry = rx, ry
-                elif len(active_touches) == 3:
-                    avg_x = sum(t["x"] for t in active_touches.values()) / 3
-                    avg_y = sum(t["y"] for t in active_touches.values()) / 3
-                    finger_move = all(
-                        abs(t["x"] - t["initial_x"]) > TAP_MOVEMENT_THRESHOLD
-                        or abs(t["y"] - t["initial_y"]) > TAP_MOVEMENT_THRESHOLD
-                        for t in active_touches.values()
-                    )
-                    if finger_move:
+                        device.emit(uinput.REL_X, rel_x)
+                        device.emit(uinput.REL_Y, rel_y)
+                    elif len(active_touches) == 2 and not already_scrolled:
+                        rel_x = (
+                            qualify(rx - active_touches[current_slot]["last_x"])
+                            * SCROLL_SENSITIVITY
+                        )
+                        rel_y = (
+                            qualify(ry - active_touches[current_slot]["last_y"])
+                            * SCROLL_SENSITIVITY
+                        )
+                        device.emit(uinput.REL_HWHEEL, -rel_x)
+                        device.emit(uinput.REL_WHEEL, rel_y)
+                        already_scrolled = True
+                    elif len(active_touches) == 3:
                         if not three_finger_down:
                             device.emit(uinput.BTN_LEFT, 1)
                             three_finger_down = True
-                        rx, ry = apply_rotation(
-                            avg_x,
-                            avg_y,
-                            ORIENTATION,
-                            max_x,
-                            max_y,
-                        )
-                        if last_rx is not None and last_ry is not None:
-                            rel_x = int((rx - last_rx) * CURSOR_SENSITIVITY)
-                            rel_y = int((ry - last_ry) * CURSOR_SENSITIVITY)
+                            rel_x = int(
+                                (rx - active_touches[current_slot]["last_x"])
+                                * CURSOR_SENSITIVITY
+                            )
+                            rel_y = int(
+                                (ry - active_touches[current_slot]["last_y"])
+                                * CURSOR_SENSITIVITY
+                            )
                             device.emit(uinput.REL_X, rel_x)
                             device.emit(uinput.REL_Y, rel_y)
-                        last_rx, last_ry = rx, ry
+                (
+                    active_touches[current_slot]["last_x"],
+                    active_touches[current_slot]["last_y"],
+                ) = rx, ry
 
         elif event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH:
             if event.value == 1:  # Touch down
                 touch_start_time = event.timestamp()
-                last_rx = last_ry = None
+                active_touches[current_slot]["last_x"] = active_touches[current_slot][
+                    "last_y"
+                ] = None
             elif event.value == 0:  # Touch up
                 if touch_start_time is not None:
                     touch_duration = event.timestamp() - touch_start_time
                     finger_tap = all(
-                        (event.timestamp() - t["start_time"]) < TAP_DURATION_THRESHOLD
-                        and abs(t["x"] - t["initial_x"]) < TAP_MOVEMENT_THRESHOLD
-                        and abs(t["y"] - t["initial_y"]) < TAP_MOVEMENT_THRESHOLD
+                        touch_duration < TAP_DURATION_THRESHOLD
+                        and abs(t["current_x"] - t["initial_x"])
+                        < TAP_MOVEMENT_THRESHOLD
+                        and abs(t["current_y"] - t["initial_y"])
+                        < TAP_MOVEMENT_THRESHOLD
                         for t in active_touches.values()
                     )
                     if finger_tap:
@@ -289,6 +327,7 @@ try:
                 device.emit(uinput.BTN_LEFT, 0)
                 three_finger_down = False
                 already_scrolled = False
+                already_moved = False
                 active_touches.clear()
 except KeyboardInterrupt:
     toggle_original_input(touch_dev_name, True)
