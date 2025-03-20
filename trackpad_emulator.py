@@ -6,53 +6,6 @@ import argparse
 import sys
 
 
-class VirtualTrackpad:
-    def __init__(self) -> None:
-        pass
-
-    def move_cursor(self):
-        print("moving cursor")
-        pass
-
-    def scroll(self):
-        print("scrolling")
-        pass
-
-    def click(self, button, state):
-        print(f"click {button} {state}")
-        pass
-
-
-class TouchscreenHandler:
-    def __init__(self) -> None:
-        pass
-
-    def toggle_touch_screen(self, enabled):
-        pass
-
-    def read_event(self):
-        return []
-
-
-class GestureRecognizer:
-    def __init__(self) -> None:
-        pass
-
-    def recognize(self, event):
-        return ""
-
-
-def main():
-    touschreen_handler = TouchscreenHandler()
-    virtual_trackpad = VirtualTrackpad()
-    gesture_recognizer = GestureRecognizer()
-
-    touschreen_handler.toggle_touch_screen(enabled=False)
-    for event in touschreen_handler.read_event():
-        if gesture_recognizer.recognize(event) == "move_cursor":
-            virtual_trackpad.move_cursor()
-
-
 def find_touchscreen_udev():
     context = pyudev.Context()
     for device in context.list_devices(subsystem="input"):
@@ -305,9 +258,6 @@ try:
         elif event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH:
             if event.value == 1:  # Touch down
                 touch_start_time = event.timestamp()
-                active_touches[current_slot]["last_x"] = active_touches[current_slot][
-                    "last_y"
-                ] = None
             elif event.value == 0:  # Touch up
                 if touch_start_time is not None:
                     touch_duration = event.timestamp() - touch_start_time
@@ -325,9 +275,7 @@ try:
                         if len(active_touches) <= 1:
                             device.emit(uinput.BTN_LEFT, 1)
                 device.emit(uinput.BTN_LEFT, 0)
-                three_finger_down = False
-                already_scrolled = False
-                already_moved = False
+                three_finger_down = already_scrolled = already_moved = False
                 active_touches.clear()
 except KeyboardInterrupt:
     toggle_original_input(touch_dev_name, True)
