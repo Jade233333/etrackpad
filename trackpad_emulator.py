@@ -105,14 +105,6 @@ def capture_report(touch_dev_name, max_x, max_y, rotation):
     print(f"Active rotation: {rotation}°")
 
 
-def all_not_none(active_touches):
-    for touch in active_touches.values():
-        for record in touch.values():
-            if record is None:
-                return False
-    return True
-
-
 def qualify(x):
     qualified_x = 0
     if x > 0:
