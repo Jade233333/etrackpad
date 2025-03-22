@@ -1,3 +1,4 @@
+from typing import Literal
 from evdev import InputDevice, ecodes
 import pyudev
 import uinput
@@ -133,19 +134,68 @@ device = uinput.Device(
     ]
 )
 
+
+class TrackPad:
+    def __init__(self) -> None:
+        self.device = uinput.Device(
+            [
+                uinput.REL_X,
+                uinput.REL_Y,
+                uinput.BTN_LEFT,
+                uinput.BTN_RIGHT,
+                uinput.REL_WHEEL,
+                uinput.REL_HWHEEL,
+            ]
+        )
+
+    def move_cursor(self, current_x, current_y, last_x, last_y):
+        rel_x = int((current_x - last_x) * CURSOR_SENSITIVITY)
+        rel_y = int((current_y - last_y) * CURSOR_SENSITIVITY)
+        self.device.emit(uinput.REL_X, rel_x)
+        self.device.emit(uinput.REL_Y, rel_y)
+
+    def scroll_wheel(self, current_x, current_y, last_x, last_y):
+        rel_x = qualify(current_x - last_x) * SCROLL_SENSITIVITY
+        rel_y = qualify(current_y - last_y) * SCROLL_SENSITIVITY
+        self.device.emit(uinput.REL_HWHEEL, -rel_x)
+        self.device.emit(uinput.REL_WHEEL, rel_y)
+
+    def click_button(
+        self, button: Literal["right", "left"], status: Literal["down", "up", "click"]
+    ):
+        if button == "left":
+            if status == "down":
+                self.device.emit(uinput.BTN_LEFT, 1)
+            elif status == "up":
+                self.device.emit(uinput.BTN_LEFT, 0)
+            else:
+                self.device.emit(uinput.BTN_LEFT, 1)
+                self.device.emit(uinput.BTN_LEFT, 0)
+        else:
+            if status == "down":
+                self.device.emit(uinput.BTN_RIGHT, 1)
+            elif status == "up":
+                self.device.emit(uinput.BTN_RIGHT, 0)
+            else:
+                self.device.emit(uinput.BTN_RIGHT, 1)
+                self.device.emit(uinput.BTN_RIGHT, 0)
+
+
 try:
     # load original input
     touch_dev = find_touchscreen_udev()
+    track_pad = TrackPad()
 
     # variable initialization
     touch_dev_name = str(touch_dev.name).replace(" ", "-").lower()
     max_x, max_y = get_device_xy_limit(touch_dev)
     touch_start_time = None
+    last_x = last_y = None
     active_touches = {}
     current_slot = 0
     already_scrolled = False
     already_moved = False
-    three_finger_down = False
+    already_dragged = False
 
     capture_report(touch_dev_name, max_x, max_y, ORIENTATION)
     toggle_original_input(touch_dev_name, False)
@@ -162,9 +212,10 @@ try:
                         "initial_y": None,
                         "current_x": None,
                         "current_y": None,
-                        "last_x": None,
-                        "last_y": None,
+                        "lifted": False,
                     }
+                else:
+                    active_touches[current_slot]["lifted"] = True
 
             elif event.code == ecodes.ABS_MT_POSITION_X:
                 if current_slot in active_touches:
@@ -180,7 +231,6 @@ try:
 
         elif event.type == ecodes.EV_SYN and event.code == ecodes.SYN_REPORT:
             if len(active_touches) != 0:
-                print(active_touches)
                 avg_x = sum(t["current_x"] for t in active_touches.values()) / len(
                     active_touches
                 )
@@ -201,51 +251,33 @@ try:
                         for t in active_touches.values()
                     ):
                         already_moved = True
-                elif (
-                    active_touches[current_slot]["last_x"] is not None
-                    and active_touches[current_slot]["last_y"] is not None
-                ):
+                elif last_x is not None and last_y is not None:
                     if len(active_touches) == 1:
-                        rel_x = int(
-                            (rx - active_touches[current_slot]["last_x"])
-                            * CURSOR_SENSITIVITY
+                        track_pad.move_cursor(
+                            current_x=rx,
+                            current_y=ry,
+                            last_x=last_x,
+                            last_y=last_y,
                         )
-                        rel_y = int(
-                            (ry - active_touches[current_slot]["last_y"])
-                            * CURSOR_SENSITIVITY
-                        )
-                        device.emit(uinput.REL_X, rel_x)
-                        device.emit(uinput.REL_Y, rel_y)
                     elif len(active_touches) == 2 and not already_scrolled:
-                        rel_x = (
-                            qualify(rx - active_touches[current_slot]["last_x"])
-                            * SCROLL_SENSITIVITY
+                        track_pad.scroll_wheel(
+                            current_x=rx,
+                            current_y=ry,
+                            last_x=last_x,
+                            last_y=last_y,
                         )
-                        rel_y = (
-                            qualify(ry - active_touches[current_slot]["last_y"])
-                            * SCROLL_SENSITIVITY
-                        )
-                        device.emit(uinput.REL_HWHEEL, -rel_x)
-                        device.emit(uinput.REL_WHEEL, rel_y)
                         already_scrolled = True
                     elif len(active_touches) == 3:
-                        if not three_finger_down:
-                            device.emit(uinput.BTN_LEFT, 1)
-                            three_finger_down = True
-                            rel_x = int(
-                                (rx - active_touches[current_slot]["last_x"])
-                                * CURSOR_SENSITIVITY
-                            )
-                            rel_y = int(
-                                (ry - active_touches[current_slot]["last_y"])
-                                * CURSOR_SENSITIVITY
-                            )
-                            device.emit(uinput.REL_X, rel_x)
-                            device.emit(uinput.REL_Y, rel_y)
-                (
-                    active_touches[current_slot]["last_x"],
-                    active_touches[current_slot]["last_y"],
-                ) = rx, ry
+                        if not already_dragged:
+                            track_pad.click_button("left", "down")
+                            already_dragged = True
+                        track_pad.move_cursor(
+                            current_x=rx,
+                            current_y=ry,
+                            last_x=last_x,
+                            last_y=last_y,
+                        )
+                last_x, last_y = rx, ry
 
         elif event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH:
             if event.value == 1:  # Touch down
@@ -263,12 +295,15 @@ try:
                     )
                     if finger_tap:
                         if len(active_touches) == 2:
-                            device.emit(uinput.BTN_RIGHT, 1)
-                        if len(active_touches) <= 1:
-                            device.emit(uinput.BTN_LEFT, 1)
-                device.emit(uinput.BTN_LEFT, 0)
-                three_finger_down = already_scrolled = already_moved = False
+                            track_pad.click_button("right", "down")
+                        if len(active_touches) == 1:
+                            track_pad.click_button("left", "down")
+                track_pad.click_button("right", "up")
+                track_pad.click_button("left", "up")
+                already_dragged = already_scrolled = already_moved = False
                 active_touches.clear()
+                # do not need to clear last_xy explicitly here
+                # as my if logic, the first coords report after touch is ignored
 except KeyboardInterrupt:
     toggle_original_input(touch_dev_name, True)
     print("Restored touchscreen input")
