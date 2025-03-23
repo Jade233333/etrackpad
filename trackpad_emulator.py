@@ -4,7 +4,6 @@ import pyudev
 import uinput
 import subprocess
 import argparse
-import sys
 
 
 def parse_arguments():
@@ -51,7 +50,7 @@ def parse_arguments():
 
 
 class TrackPad:
-    def __init__(self) -> None:
+    def __init__(self):
         self.scroll_sensitivity = args.scroll_sensitivity
         self.cursor_sensitivity = args.cursor_sensitivity
         self.device = uinput.Device(
@@ -114,11 +113,11 @@ class NoValidDeviceError(Exception):
 
 
 class TouchscreenHandler:
-    def __init__(self) -> None:
+    def __init__(self):
         self.rotation = args.rotate
         self.device = self._find_touchscreen()
         self.name = str(self.device.name).replace(" ", "-").lower()
-        self.max_x, self.max_y = self._get_device_xy_limit()
+        self.max_x, self.max_y = self._get_xy_limit()
         self._capture_report()
         self.toggle_input(False)
 
@@ -136,9 +135,14 @@ class TouchscreenHandler:
                 return dev
         raise NoValidDeviceError("no touchscreen detected")
 
-    def _get_device_xy_limit(self):
+    def _get_capabilities(self) -> list:
+        capabilities = self.device.capabilities().get(ecodes.EV_ABS, [])
+        return capabilities
+
+    def _get_xy_limit(self):
         max_x = max_y = 0
-        for abs_code, abs_info in self.device.capabilities().get(ecodes.EV_ABS, []):
+        capabilities = self._get_capabilities()
+        for abs_code, abs_info in capabilities:
             if abs_code == ecodes.ABS_X:
                 max_x = abs_info.max
             elif abs_code == ecodes.ABS_Y:
@@ -152,15 +156,15 @@ class TouchscreenHandler:
 
     def toggle_input(self, enabled):
         if enabled:
+            print(f"enabling {self.name}")
             subprocess.run(
                 ["hyprctl", "-r", "keyword", f"device[{self.name}]:enabled", "1"]
             )
-            print(f"{self.name} enabled")
         else:
+            print(f"disabling {self.name}")
             subprocess.run(
                 ["hyprctl", "-r", "keyword", f"device[{self.name}]:enabled", "0"]
             )
-            print(f"{self.name} disabled")
 
     def apply_rotation(self, x, y):
         if self.rotation == 0:
