@@ -1,3 +1,4 @@
 evdev
 pyudev
 python-uinput
+pyinstaller
