@@ -2,8 +2,8 @@ from typing import Literal
 from evdev import InputDevice, ecodes
 import pyudev
 import uinput
-import subprocess
 import argparse
+# import subprocess
 
 
 def parse_arguments():
