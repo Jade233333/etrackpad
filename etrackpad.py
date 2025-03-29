@@ -131,7 +131,6 @@ class TouchscreenHandler:
         self.name = str(self.device.name).replace(" ", "-").lower()
         self.max_x, self.max_y = self._get_xy_limit()
         self._capture_report()
-        self.toggle_input(False)
 
     def events_loop(self):
         return self.device.read_loop()
@@ -166,17 +165,17 @@ class TouchscreenHandler:
         print(f"Max X: {self.max_x}, Max Y: {self.max_y}")
         print(f"Active rotation: {self.rotation}°")
 
-    def toggle_input(self, enabled):
-        if enabled:
-            print(f"enabling {self.name}")
-            subprocess.run(
-                ["hyprctl", "-r", "keyword", f"device[{self.name}]:enabled", "1"]
-            )
-        else:
-            print(f"disabling {self.name}")
-            subprocess.run(
-                ["hyprctl", "-r", "keyword", f"device[{self.name}]:enabled", "0"]
-            )
+    # def toggle_input(self, enabled):
+    #     if enabled:
+    #         print(f"enabling {self.name}")
+    #         subprocess.run(
+    #             ["hyprctl", "-r", "keyword", f"device[{self.name}]:enabled", "1"]
+    #         )
+    #     else:
+    #         print(f"disabling {self.name}")
+    #         subprocess.run(
+    #             ["hyprctl", "-r", "keyword", f"device[{self.name}]:enabled", "0"]
+    #         )
 
 
 class GestureRecognizer:
@@ -312,20 +311,15 @@ class GestureRecognizer:
 
 
 args = parse_arguments()
-
 touchscreen_handler = TouchscreenHandler()
 track_pad = TrackPad(touchscreen_handler.max_x, touchscreen_handler.max_y)
 gesture_recognizer = GestureRecognizer()
 
-try:
-    for event in touchscreen_handler.events_loop():
-        for action, params in gesture_recognizer.process_event(event):
-            if action == "move_cursor":
-                track_pad.move_cursor(**params)
-            elif action == "scroll_wheel":
-                track_pad.scroll_wheel(**params)
-            elif action == "click_button":
-                track_pad.click_button(params["button"], params["action"])
-except KeyboardInterrupt:
-    touchscreen_handler.toggle_input(True)
-    print("Restored touchscreen input")
+for event in touchscreen_handler.events_loop():
+    for action, params in gesture_recognizer.process_event(event):
+        if action == "move_cursor":
+            track_pad.move_cursor(**params)
+        elif action == "scroll_wheel":
+            track_pad.scroll_wheel(**params)
+        elif action == "click_button":
+            track_pad.click_button(params["button"], params["action"])
