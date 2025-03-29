@@ -3,7 +3,6 @@ from evdev import InputDevice, ecodes
 import pyudev
 import uinput
 import argparse
-# import subprocess
 
 
 def parse_arguments():
@@ -164,18 +163,6 @@ class TouchscreenHandler:
         print(f"Capturing input from {self.name}")
         print(f"Max X: {self.max_x}, Max Y: {self.max_y}")
         print(f"Active rotation: {self.rotation}°")
-
-    # def toggle_input(self, enabled):
-    #     if enabled:
-    #         print(f"enabling {self.name}")
-    #         subprocess.run(
-    #             ["hyprctl", "-r", "keyword", f"device[{self.name}]:enabled", "1"]
-    #         )
-    #     else:
-    #         print(f"disabling {self.name}")
-    #         subprocess.run(
-    #             ["hyprctl", "-r", "keyword", f"device[{self.name}]:enabled", "0"]
-    #         )
 
 
 class GestureRecognizer:

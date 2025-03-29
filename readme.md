@@ -4,20 +4,32 @@
 
 A simple program to simulate trackpad behavior from a touchscreen.
 
-For current stage, it only works under hyprland as I personally use it. Although the simulation process should work no matter what the environment is, one important prerequisite is to disable the original output. As "we are wayland now", `libinput` no longer provides a universal cli to disable output like `xinput` we had in xorg. Instead, the control of input device are directly handled by Desktop Environment. As a result, in the code, `subprocess` is ran to manipulate `hyprctl` to disable the touchscreen.
-
 ## Installation
 
-Download source code.
+### Prerequisite
 
-For hyprland user, it should works straightaway
+> [!IMPORTANT]
+> Before running the program, you have to find a way to stop your Desktop Environment from reading events from touchscreen. Otherwise, the output of virtual trackpad and the real touchscreen would conflict.
 
+#### Hyprland
+
+As I use hyprland, a utility to toggle touchscreen is provided.
+
+```shell
+./dist/hyprland_toggle_touchscreen -h
 ```
-pip install -r requirements.txt
-python trackpad_emulator.py
-```
 
-For the others, you would have to change the `toggle_original_output` function in `trackpad_emulator.py` and then run the code.
+#### Others
+
+If you use xorg, `xinput` command should be helpful. If you use wayland, input devices are managed by Desktop Environment. Read through the DE's official docs to find out how to disable a input device.
+
+### Run from compiled file
+
+```shell
+git clone https://github.com/Jade233333/etrackpad.git
+cd etrackpad
+./dist/etrackpad
+```
 
 ## Usage
 
@@ -29,7 +41,7 @@ For the others, you would have to change the `toggle_original_output` function i
 | one-finger tap | left-click |
 | two-finger tap| right-click |
 
-Use `-h` flag for help to adjust key variables
+Use `-h` flag for help to adjust important variables
 
 > [!NOTE]
 > Scrolling simulation is not perfect. For current stage, one complete two-finger swipe is transcribe to one unit, which is adjustable by passing arguments, of mouse-wheel scrolling. It means that you cannot get seamless scrolling behavior like a real trackpad That is because the program is actually simulate mouse instead of trackpad and due to the wheel simulation provided by python-uinput is not stepless. If binding two-finger move amount to wheel scrolling amount, the result will look inconsistent.
