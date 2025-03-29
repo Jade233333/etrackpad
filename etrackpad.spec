@@ -4,7 +4,7 @@
 a = Analysis(
     ['etrackpad.py'],
     pathex=[],
-    binaries=[("/home/Jade/Developer/trackpad_emulator/.venv_3.10.16/lib/python3.10/site-packages/_libsuinput.cpython-310-x86_64-linux-gnu.so",".")],
+    binaries=[],
     datas=[],
     hiddenimports=[],
     hookspath=[],
@@ -19,23 +19,20 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,  # Ensure needed libraries are included
-    a.zipfiles,
-    a.datas,
-    name='etrackpad',
-    debug=False,
-    strip=False,
-    upx=True,
-    console=True,
-    singlefile=True  # This ensures it's a single file
-)
-
-coll = COLLECT(
-    exe,
     a.binaries,
     a.datas,
+    [],
+    name='etrackpad',
+    debug=False,
+    bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='etrackpad',
+    runtime_tmpdir=None,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
 )
